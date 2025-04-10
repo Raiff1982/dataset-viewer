@@ -63,6 +63,7 @@ class MoonWebhookV2Payload(TypedDict):
     repo: MoonWebhookV2PayloadRepo
     scope: str
     updatedRefs: Optional[list[UpdatedRefDict]]
+    updatedConfig: Optional[dict[str, str]]
 
 
 def parse_payload(json: Any) -> MoonWebhookV2Payload:
@@ -78,22 +79,23 @@ def process_payload(
     hf_token: Optional[str] = None,
     hf_timeout_seconds: Optional[float] = None,
     storage_clients: Optional[list[StorageClient]] = None,
+    committer_hf_token: Optional[str] = None,
 ) -> None:
     if payload["repo"]["type"] != "dataset" or payload["scope"] not in ("repo", "repo.content", "repo.config"):
         # ^ it filters out the webhook calls for non-dataset repos and discussions in dataset repos
         return None
     dataset = payload["repo"]["name"]
-    private = payload["repo"]["private"]
     if dataset is None:
         return None
     event = payload["event"]
     if event == "remove":
         delete_dataset(dataset=dataset, storage_clients=storage_clients)
     elif event in ["add", "update", "move"]:
+        revision = payload["repo"].get("headSha")
         if (
             event == "update"
-            and get_current_revision(dataset) == payload["repo"]["headSha"]
-            and (not payload["scope"] == "repo.config" or not private)
+            and get_current_revision(dataset) == revision
+            and not (payload.get("updatedConfig") or {}).get("private", False)
         ):
             # ^ it filters out the webhook calls when the refs/convert/parquet branch is updated
             # ^ it also filters switching from private to public if the headSha is in the cache (i.e. if the user is PRO/Enterprise)
@@ -101,7 +103,6 @@ def process_payload(
                 f"Webhook revision for {dataset} is the same as the current revision in the db - skipping update."
             )
             return None
-        revision = payload["repo"].get("headSha")
         old_revision: Optional[str] = None
         for updated_ref in payload.get("updatedRefs") or []:
             ref = updated_ref.get("ref")
@@ -126,11 +127,12 @@ def process_payload(
                     hf_token=hf_token,
                     hf_timeout_seconds=hf_timeout_seconds,
                     storage_clients=storage_clients,
+                    committer_hf_token=committer_hf_token,
                 )
                 return None
             except Exception as err:
                 logging.error(f"smart_update_dataset failed with {type(err).__name__}: {err}")
-        delete_dataset(dataset=dataset, storage_clients=storage_clients)
+        delete_dataset(dataset=dataset, storage_clients=storage_clients, committer_hf_token=committer_hf_token)
         # ^ delete the old contents (cache + jobs + assets) to avoid mixed content
         update_dataset(
             dataset=new_dataset,
@@ -140,6 +142,7 @@ def process_payload(
             hf_token=hf_token,
             hf_timeout_seconds=hf_timeout_seconds,
             storage_clients=storage_clients,
+            committer_hf_token=committer_hf_token,
         )
     return None
 
@@ -151,6 +154,7 @@ def create_webhook_endpoint(
     hf_timeout_seconds: Optional[float] = None,
     hf_webhook_secret: Optional[str] = None,
     storage_clients: Optional[list[StorageClient]] = None,
+    committer_hf_token: Optional[str] = None,
 ) -> Endpoint:
     async def webhook_endpoint(request: Request) -> Response:
         with StepProfiler(method="webhook_endpoint", step="all"):
@@ -196,6 +200,7 @@ def create_webhook_endpoint(
                         hf_token=hf_token,
                         hf_timeout_seconds=hf_timeout_seconds,
                         storage_clients=storage_clients,
+                        committer_hf_token=committer_hf_token,
                     )
                 except CustomError as e:
                     content = {"status": "error", "error": "the dataset is not supported"}

@@ -74,7 +74,7 @@ Also, set the assets-related configuration for the first-rows worker. See [../..
 Set environment variables to configure the `parquet-and-info` worker (`PARQUET_AND_INFO_` prefix):
 
 - `PARQUET_AND_INFO_COMMIT_MESSAGE`: the git commit message when the worker uploads the parquet files to the Hub. Defaults to `Update parquet files`.
-- `PARQUET_AND_INFO_COMMITTER_HF_TOKEN`: the HuggingFace token to commit the parquet files to the Hub. The token must be an app token associated with a user that has the right to 1. create the `refs/convert/parquet` branch (see `PARQUET_AND_INFO_TARGET_REVISION`) and 2. push commits to it on any dataset. [Datasets maintainers](https://huggingface.co/datasets-maintainers) members have these rights. The token must have permission to write. If not set, the worker will fail. Defaults to None.
+- `COMMITTER_HF_TOKEN`: the HuggingFace token to commit the parquet files to the Hub. The token must be an app token associated with a user that has the right to 1. create the `refs/convert/parquet` branch (see `PARQUET_AND_INFO_TARGET_REVISION`) and 2. push commits to it on any dataset. [Datasets maintainers](https://huggingface.co/datasets-maintainers) members have these rights. The token must have permission to write. If not set, the worker will fail. Defaults to None.
 - `PARQUET_AND_INFO_MAX_DATASET_SIZE_BYTES`: the maximum size in bytes of the dataset to pre-compute the parquet files. Bigger datasets, or datasets without that information, are partially streamed to get parquet files up to this value. Defaults to `100_000_000`.
 - `PARQUET_AND_INFO_MAX_ROW_GROUP_BYTE_SIZE_FOR_COPY`: the maximum size in bytes of the row groups of parquet datasets that are copied to the target revision. Bigger datasets, or datasets without that information, are partially streamed to get parquet files up to `PARQUET_AND_INFO_MAX_DATASET_SIZE_BYTES` bytes. Defaults to `100_000_000`.
 - `PARQUET_AND_INFO_SOURCE_REVISION`: the git revision of the dataset to use to prepare the parquet files. Defaults to `main`.
@@ -87,7 +87,7 @@ Set environment variables to configure the `duckdb-index` worker (`DUCKDB_INDEX_
 
 - `DUCKDB_INDEX_CACHE_DIRECTORY`: directory where the temporal duckdb index files are stored. Defaults to empty.
 - `DUCKDB_INDEX_COMMIT_MESSAGE`: the git commit message when the worker uploads the duckdb index file to the Hub. Defaults to `Update duckdb index file`.
-- `DUCKDB_INDEX_COMMITTER_HF_TOKEN`: the HuggingFace token to commit the duckdb index file to the Hub. The token must be an app token associated with a user that has the right to 1. create the `refs/convert/duckdb` branch (see `DUCKDB_INDEX_TARGET_REVISION`) and 2. push commits to it on any dataset. [Datasets maintainers](https://huggingface.co/datasets-maintainers) members have these rights. The token must have permission to write. If not set, the worker will fail. Defaults to None.
+- `COMMITTER_HF_TOKEN`: the HuggingFace token to commit the duckdb index file to the Hub. The token must be an app token associated with a user that has the right to 1. create the `refs/convert/duckdb` branch (see `DUCKDB_INDEX_TARGET_REVISION`) and 2. push commits to it on any dataset. [Datasets maintainers](https://huggingface.co/datasets-maintainers) members have these rights. The token must have permission to write. If not set, the worker will fail. Defaults to None.
 - `DUCKDB_INDEX_MAX_SPLIT_SIZE_BYTES`: if size in bytes of raw uncompressed split data is larger than this value, only first `n` parquet files are used so that their sum of uncompressed content in bytes is not greater than approximately `DUCKDB_INDEX_MAX_SPLIT_SIZE_BYTES`. Defaults to `100_000_000`.
 - `DUCKDB_INDEX_TARGET_REVISION`: the git revision of the dataset where to store the duckdb index file. Make sure the committer token (`DUCKDB_INDEX_COMMITTER_HF_TOKEN`) has the permission to write there. Defaults to `refs/convert/duckdb`.
 - `DUCKDB_INDEX_URL_TEMPLATE`: the URL template to build the duckdb index file URL. Defaults to `/datasets/%s/resolve/%s/%s`.
@@ -116,6 +116,7 @@ The response has three fields: `num_examples`, `statistics`, and `partial`. `par
 * `list` - for lists of other data types (including lists)
 * `audio` - for audio data
 * `image` - for image data
+* `datetime` - for datetime data
 
 `column_statistics` content depends on the feature type, see examples below.
 ##### class_label
@@ -583,6 +584,59 @@ Shows distribution of image files widths.
                 752,
                 814,
                 873
+            ]
+        }
+    }
+}
+```
+</p>
+</details>
+
+
+##### datetime
+
+Shows distribution of datetimes.
+
+<details><summary>example: </summary>
+<p>
+
+```python
+{
+    "column_name": "date",
+    "column_type": "datetime",
+    "column_statistics": {
+        "nan_count": 0,
+        "nan_proportion": 0.0,
+        "min": "2013-05-18 04:54:11",
+        "max": "2013-06-20 10:01:41",
+        "mean": "2013-05-27 18:03:39",
+        "median": "2013-05-23 11:55:50",
+        "std": "11 days, 4:57:32.322450",
+        "histogram": {
+            "hist": [
+                318776,
+                393036,
+                173904,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                206284
+            ],
+            "bin_edges": [
+                "2013-05-18 04:54:11",
+                "2013-05-21 12:36:57",
+                "2013-05-24 20:19:43",
+                "2013-05-28 04:02:29",
+                "2013-05-31 11:45:15",
+                "2013-06-03 19:28:01",
+                "2013-06-07 03:10:47",
+                "2013-06-10 10:53:33",
+                "2013-06-13 18:36:19",
+                "2013-06-17 02:19:05",
+                "2013-06-20 10:01:41"
             ]
         }
     }

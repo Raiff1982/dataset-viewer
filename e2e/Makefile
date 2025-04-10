@@ -3,6 +3,7 @@ export ADMIN_UVICORN_NUM_WORKERS := 2
 export ADMIN_UVICORN_PORT := 9081
 export API_HF_JWT_ALGORITHM := EdDSA
 export API_HF_JWT_PUBLIC_KEY_URL := https://hub-ci.huggingface.co/api/keys/jwt
+export API_HF_JWT_ADDITIONAL_PUBLIC_KEYS :=
 # ^ it's not tested in the e2e tests, but it's good to ensure we're able to fetch it at least.
 export ADMIN_HF_TIMEOUT_SECONDS := 10
 export API_HF_TIMEOUT_SECONDS := 10
@@ -19,8 +20,7 @@ export COMMON_HF_TOKEN := hf_app_datasets-server_token
 export COMMON_BLOCKED_DATASETS := DVUser/blocked-*
 export LOG_LEVEL := DEBUG
 export MONGO_PORT := 27050
-export PARQUET_AND_INFO_COMMITTER_HF_TOKEN := hf_app_datasets-server-parquet-converter_token
-export DUCKDB_INDEX_COMMITTER_HF_TOKEN := hf_app_datasets-server-parquet-converter_token
+export COMMITTER_HF_TOKEN := hf_app_datasets-server-parquet-converter_token
 export PORT_REVERSE_PROXY := 9000
 export PROMETHEUS_MULTIPROC_DIR := /tmp
 export WORKER_SLEEP_SECONDS := 1

@@ -5,14 +5,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
-from huggingface_hub.hf_api import DatasetInfo, HfApi
-from huggingface_hub.utils import (
-    HfHubHTTPError,
-    RepositoryNotFoundError,
-    get_session,
-    hf_raise_for_status,
-    validate_hf_hub_args,
-)
+from huggingface_hub import DatasetInfo, HfApi, get_session
+from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
+from huggingface_hub.utils._http import hf_raise_for_status
+from huggingface_hub.utils._validators import validate_hf_hub_args
 
 from libcommon.constants import TAG_NFAA_SYNONYMS
 from libcommon.dtos import Priority
@@ -63,8 +59,8 @@ class EntityInfo:
         self.is_enterprise = kwargs.pop("isEnterprise", None)
 
 
-class CustomHfApi(HfApi):  # type: ignore
-    @validate_hf_hub_args  # type: ignore
+class CustomHfApi(HfApi):
+    @validate_hf_hub_args
     def whoisthis(
         self,
         name: str,
@@ -120,7 +116,7 @@ def get_entity_info(
     hf_timeout_seconds: Optional[float] = None,
 ) -> EntityInfo:
     # let's the exceptions bubble up if any
-    return CustomHfApi(endpoint=hf_endpoint).whoisthis(  # type: ignore
+    return CustomHfApi(endpoint=hf_endpoint).whoisthis(
         name=author,
         token=hf_token,
         timeout=hf_timeout_seconds,
@@ -196,20 +192,24 @@ class OperationsStatistics:
         self.tasks.add(other.tasks)
 
 
-def delete_dataset(dataset: str, storage_clients: Optional[list[StorageClient]] = None) -> OperationsStatistics:
+def delete_dataset(
+    dataset: str, storage_clients: Optional[list[StorageClient]] = None, committer_hf_token: Optional[str] = None
+) -> OperationsStatistics:
     """
     Delete a dataset
 
     Args:
         dataset (`str`): the dataset
         storage_clients (`list[StorageClient]`, *optional*): the storage clients to use to delete the dataset
+        committer_hf_token (`str`, *optional*): HF token to empty the ref branches (parquet/duckdb)
 
     Returns:
         `OperationsStatistics`: the statistics of the deletion
     """
     logging.debug(f"delete cache for dataset='{dataset}'")
     return OperationsStatistics(
-        num_deleted_datasets=1, tasks=remove_dataset(dataset=dataset, storage_clients=storage_clients)
+        num_deleted_datasets=1,
+        tasks=remove_dataset(dataset=dataset, storage_clients=storage_clients, committer_hf_token=committer_hf_token),
     )
 
 
@@ -221,6 +221,7 @@ def update_dataset(
     hf_timeout_seconds: Optional[float] = None,
     priority: Priority = Priority.LOW,
     storage_clients: Optional[list[StorageClient]] = None,
+    committer_hf_token: Optional[str] = None,
 ) -> None:
     """
       blocked_datasets (`list[str]`): The list of blocked datasets. Supports Unix shell-style wildcards in the dataset
@@ -238,7 +239,7 @@ def update_dataset(
         )
     except NotSupportedError as e:
         logging.warning(f"Dataset {dataset} is not supported ({type(e)}). Let's delete the dataset.")
-        delete_dataset(dataset=dataset, storage_clients=storage_clients)
+        delete_dataset(dataset=dataset, storage_clients=storage_clients, committer_hf_token=committer_hf_token)
         raise
     set_revision(
         dataset=dataset,
@@ -256,6 +257,7 @@ def smart_update_dataset(
     hf_token: Optional[str] = None,
     hf_timeout_seconds: Optional[float] = None,
     storage_clients: Optional[list[StorageClient]] = None,
+    committer_hf_token: Optional[str] = None,
 ) -> None:
     """
       blocked_datasets (`list[str]`): The list of blocked datasets. Supports Unix shell-style wildcards in the dataset
@@ -277,7 +279,10 @@ def smart_update_dataset(
         )
     except NotSupportedError as e:
         logging.warning(f"Dataset {dataset} is not supported ({type(e)}). Let's delete the dataset.")
-        delete_dataset(dataset=dataset, storage_clients=storage_clients)
+        try:
+            delete_dataset(dataset=dataset, storage_clients=storage_clients, committer_hf_token=committer_hf_token)
+        except Exception as err:
+            logging.info(f"Couldn't delete dataset: {err}")
         raise
     smart_set_revision(
         dataset=dataset,

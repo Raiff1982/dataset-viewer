@@ -7,7 +7,7 @@ from typing import Any, Optional, TypedDict, Union
 
 import polars as pl
 import pyarrow.parquet as pq
-from datasets import Features, Sequence
+from datasets import Features, LargeList, Sequence
 from datasets.features.features import FeatureType, _ArrayXD
 from libcommon.dtos import JobInfo
 from libcommon.exceptions import (
@@ -39,6 +39,7 @@ from worker.statistics_utils import (
     AudioColumn,
     BoolColumn,
     ClassLabelColumn,
+    DatetimeColumn,
     FloatColumn,
     ImageColumn,
     IntColumn,
@@ -57,7 +58,15 @@ class SplitDescriptiveStatisticsResponse(TypedDict):
 
 
 SupportedColumns = Union[
-    ClassLabelColumn, IntColumn, FloatColumn, StringColumn, BoolColumn, ListColumn, AudioColumn, ImageColumn
+    ClassLabelColumn,
+    IntColumn,
+    FloatColumn,
+    StringColumn,
+    BoolColumn,
+    ListColumn,
+    AudioColumn,
+    ImageColumn,
+    DatetimeColumn,
 ]
 
 
@@ -67,7 +76,7 @@ def is_extension_feature(feature: FeatureType) -> bool:
         return any(is_extension_feature(f) for f in feature.values())
     elif isinstance(feature, (list, tuple)):
         return any(is_extension_feature(f) for f in feature)
-    elif isinstance(feature, Sequence):
+    elif isinstance(feature, (LargeList, Sequence)):
         return is_extension_feature(feature.feature)
     else:
         return isinstance(feature, _ArrayXD)
@@ -205,7 +214,7 @@ def compute_descriptive_statistics_response(
         dataset_feature_name: str, dataset_feature: Union[dict[str, Any], list[Any]]
     ) -> Optional[SupportedColumns]:
         if isinstance(dataset_feature, list) or (
-            isinstance(dataset_feature, dict) and dataset_feature.get("_type") == "Sequence"
+            isinstance(dataset_feature, dict) and dataset_feature.get("_type") in ("LargeList", "Sequence")
         ):
             # Compute only if it's internally a List! because it can also be Struct, see
             # https://huggingface.co/docs/datasets/v2.18.0/en/package_reference/main_classes#datasets.Features
@@ -215,29 +224,34 @@ def compute_descriptive_statistics_response(
                 return ListColumn(feature_name=dataset_feature_name, n_samples=num_examples)
 
         if isinstance(dataset_feature, dict):
-            if dataset_feature.get("_type") == "ClassLabel":
+            _type = dataset_feature.get("_type")
+            if _type == "ClassLabel":
                 return ClassLabelColumn(
                     feature_name=dataset_feature_name, n_samples=num_examples, feature_dict=dataset_feature
                 )
 
-            if dataset_feature.get("_type") == "Audio":
+            if _type == "Audio":
                 return AudioColumn(feature_name=dataset_feature_name, n_samples=num_examples)
 
-            if dataset_feature.get("_type") == "Image":
+            if _type == "Image":
                 return ImageColumn(feature_name=dataset_feature_name, n_samples=num_examples)
 
-            if dataset_feature.get("_type") == "Value":
-                if dataset_feature.get("dtype") in INTEGER_DTYPES:
+            if _type == "Value":
+                dtype = dataset_feature.get("dtype", "")
+                if dtype in INTEGER_DTYPES:
                     return IntColumn(feature_name=dataset_feature_name, n_samples=num_examples)
 
-                if dataset_feature.get("dtype") in FLOAT_DTYPES:
+                if dtype in FLOAT_DTYPES:
                     return FloatColumn(feature_name=dataset_feature_name, n_samples=num_examples)
 
-                if dataset_feature.get("dtype") in STRING_DTYPES:
+                if dtype in STRING_DTYPES:
                     return StringColumn(feature_name=dataset_feature_name, n_samples=num_examples)
 
-                if dataset_feature.get("dtype") == "bool":
+                if dtype == "bool":
                     return BoolColumn(feature_name=dataset_feature_name, n_samples=num_examples)
+
+                if dtype.startswith("timestamp"):
+                    return DatetimeColumn(feature_name=dataset_feature_name, n_samples=num_examples)
         return None
 
     columns: list[SupportedColumns] = []
@@ -249,7 +263,7 @@ def compute_descriptive_statistics_response(
     if not columns:
         raise NoSupportedFeaturesError(
             "No columns for statistics computation found. Currently supported feature types are: "
-            f"{NUMERICAL_DTYPES}, {STRING_DTYPES}, ClassLabel, list/Sequence and bool. "
+            f"{NUMERICAL_DTYPES}, {STRING_DTYPES}, ClassLabel, Image, Audio, list/Sequence, datetime and bool. "
         )
 
     column_names_str = ", ".join([column.name for column in columns])
